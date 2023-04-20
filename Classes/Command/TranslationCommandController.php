@@ -76,7 +76,7 @@ class TranslationCommandController extends CommandController
      * @throws Exception
      * @throws StopCommandException
      */
-    public function syncCommand(string $siteNodeName, bool $translate = false, string $nodeTypeFilter = null): void
+    public function syncCommand(string $siteNodeName, bool $translate = false, string $nodeTypeFilter = 'Neos.Neos:Document', array $dimensions = []): void
     {
         /** @var Site|null $site */
         $site = $this->siteRepository->findOneByNodeName($siteNodeName);
@@ -86,7 +86,12 @@ class TranslationCommandController extends CommandController
             $this->quit(1);
         }
 
-        $siteNode = $this->getContentContext()->getNode('/sites/' . $siteNodeName);
+        if (!empty($dimensions)) {
+            $dimensions = json_decode(reset($dimensions), true);
+            $siteNode = $this->getContentContextByAdditionalDimensionOffset($dimensions)->getNode('/sites/'.$siteNodeName);
+        } else {
+            $siteNode = $this->getContentContext()->getNode('/sites/' . $siteNodeName);
+        }
 
         if (is_null($nodeTypeFilter)) {
             $nodeTypeFilter = '[instanceof Neos.Neos:Document][!instanceof Neos.Neos:Shortcut]';
@@ -139,5 +144,16 @@ class TranslationCommandController extends CommandController
     protected function getContentContext(): Context
     {
         return $this->nodeTranslationService->getContextForTargetLanguageDimensionAndSourceLanguageDimensionAndWorkspaceName($this->contentDimensionConfiguration[$this->languageDimensionName]['defaultPreset']);
+    }
+
+    /**
+     * @return Context
+     */
+    protected function getContentContextByAdditionalDimensionOffset(array $dimensionConfiguration): Context
+    {
+        $sourceLanguage = $this->contentDimensionConfiguration[array_key_first($dimensionConfiguration)]['presets'][$dimensionConfiguration[array_key_first($dimensionConfiguration)]]['defaultLanguage'];
+        $language =  $sourceLanguage ?? $this->contentDimensionConfiguration[$this->languageDimensionName]['defaultPreset'];
+
+        return $this->nodeTranslationService->getContextForTargetLanguageDimensionAndSourceLanguageDimensionAndWorkspaceName($language, $sourceLanguage, 'live', $dimensionConfiguration);
     }
 }

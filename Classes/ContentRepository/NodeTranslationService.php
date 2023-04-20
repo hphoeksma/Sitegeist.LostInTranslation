@@ -96,8 +96,8 @@ class NodeTranslationService
     }
 
     /**
-     * @param  NodeInterface  $node
-     * @param  Context  $context
+     * @param NodeInterface $node
+     * @param Context $context
      * @param $recursive
      * @return void
      */
@@ -121,15 +121,15 @@ class NodeTranslationService
 
         $this->isActive = true;
 
-        $adoptedNode = $context->getNodeByIdentifier((string) $node->getNodeAggregateIdentifier());
+        $adoptedNode = $context->getNodeByIdentifier((string)$node->getNodeAggregateIdentifier());
         $this->syncNodeInternal($node, $adoptedNode, $context);
 
         $this->isActive = false;
     }
 
     /**
-     * @param  NodeInterface  $node
-     * @param  Workspace  $workspace
+     * @param NodeInterface $node
+     * @param Workspace $workspace
      * @return void
      */
     public function afterNodePublish(NodeInterface $node, Workspace $workspace): void
@@ -149,10 +149,10 @@ class NodeTranslationService
      * All translatable properties from the source node are collected and passed translated via deepl and
      * applied to the target node
      *
-     * @param  NodeInterface  $sourceNode
-     * @param  NodeInterface  $targetNode
-     * @param  Context  $context
-     * @param  bool  $translate
+     * @param NodeInterface $sourceNode
+     * @param NodeInterface $targetNode
+     * @param Context $context
+     * @param bool $translate
      * @return void
      */
     protected function syncNodeInternal(NodeInterface $sourceNode, NodeInterface $targetNode, Context $context, bool $translate = true): void
@@ -181,13 +181,13 @@ class NodeTranslationService
         }
 
         // Move node if targetNode has no parent or node parents are not matching
-        if (!$targetNode->getParent() || ($sourceNode->getParentPath() !== $targetNode->getParentPath())) {
-            try {
-                $referenceNode = $context->getNodeByIdentifier($sourceNode->getParent()->getIdentifier());
-                $targetNode->moveInto($referenceNode);
-            } catch (NodeExistsException|InvalidArgumentException $e) {
-            }
-        }
+//        if (!$targetNode->getParent() || ($sourceNode->getParentPath() !== $targetNode->getParentPath())) {
+//            try {
+//                $referenceNode = $context->getNodeByIdentifier($sourceNode->getParent()->getIdentifier());
+//                $targetNode->moveInto($referenceNode);
+//            } catch (NodeExistsException|InvalidArgumentException $e) {
+//            }
+//        }
 
         // Sync internal properties
         $targetNode->setNodeType($sourceNode->getNodeType());
@@ -197,7 +197,7 @@ class NodeTranslationService
         $targetNode->setHiddenAfterDateTime($sourceNode->getHiddenAfterDateTime());
         $targetNode->setIndex($sourceNode->getIndex());
 
-        $properties = (array) $sourceNode->getProperties(true);
+        $properties = (array)$sourceNode->getProperties(true);
         $propertiesToTranslate = [];
         foreach ($properties as $propertyName => $propertyValue) {
             if (empty($propertyValue)) {
@@ -237,23 +237,33 @@ class NodeTranslationService
     }
 
     /**
-     * @param  string  $targetLanguage
-     * @param  string|null  $sourceLanguage
-     * @param  string  $workspaceName
+     * @param string $targetLanguage
+     * @param string|null $sourceLanguage
+     * @param string $workspaceName
      * @return Context
      */
-    public function getContextForTargetLanguageDimensionAndSourceLanguageDimensionAndWorkspaceName(string $targetLanguage, string $sourceLanguage = null, string $workspaceName = 'live'): Context
+    public function getContextForTargetLanguageDimensionAndSourceLanguageDimensionAndWorkspaceName(string $targetLanguage, string $sourceLanguage = null, string $workspaceName = 'live', array $dimensions = []): Context
     {
-        $dimensionAndWorkspaceIdentifierHash = md5(trim($sourceLanguage.$targetLanguage.$workspaceName));
+        $dimensionAndWorkspaceIdentifierHash = md5(trim($sourceLanguage . $targetLanguage . $workspaceName . str_replace(['"',':','{','}','[',']'], '', json_encode($dimensions))));
 
         if (array_key_exists($dimensionAndWorkspaceIdentifierHash, $this->contextFirstLevelCache)) {
             return $this->contextFirstLevelCache[$dimensionAndWorkspaceIdentifierHash];
         }
 
-        $languageDimensions = array($targetLanguage);
-        if (!is_null($sourceLanguage)) {
-            $languageDimensions[] = $sourceLanguage;
+        if (!empty($dimensions)) {
+            $targetDimensions = array_merge_recursive($dimensions, [$this->languageDimensionName => $targetLanguage]);
+        } else {
+            $targetDimensions = [$this->languageDimensionName => $targetLanguage];
         }
+
+        $contentDimensions = [];
+        if (!empty($dimensions)) {
+            foreach ($dimensions as $key => $value) {
+                $contentDimensions[$key] = $this->contentDimensionConfiguration[$key]['presets'][$value]['values'];
+            }
+        }
+
+        $contentDimensions[$this->languageDimensionName] = [$targetLanguage];
 
         return $this->contextFirstLevelCache[$dimensionAndWorkspaceIdentifierHash] = $this->contextFactory->create(
             array(
@@ -261,34 +271,30 @@ class NodeTranslationService
                 'invisibleContentShown' => true,
                 'removedContentShown' => true,
                 'inaccessibleContentShown' => true,
-                'dimensions' => array(
-                    $this->languageDimensionName => $languageDimensions,
-                ),
-                'targetDimensions' => array(
-                    $this->languageDimensionName => $targetLanguage,
-                ),
+                'dimensions' => $contentDimensions,
+                'targetDimensions' => $targetDimensions
             )
         );
     }
 
     /**
-     * @param  string  $language
-     * @param  string  $workspaceName
+     * @param string $language
+     * @param string $workspaceName
      * @return Context
      *
      * @deprecated
      */
-    public function getContextForLanguageDimensionAndWorkspaceName(string $language, string $workspaceName = 'live'): Context
+    public function getContextForLanguageDimensionAndWorkspaceName(string $language, string $workspaceName = 'live', array $dimensions = []): Context
     {
-        return $this->getContextForTargetLanguageDimensionAndSourceLanguageDimensionAndWorkspaceName($language, null, $workspaceName);
+        return $this->getContextForTargetLanguageDimensionAndSourceLanguageDimensionAndWorkspaceName($language, null, $workspaceName, $dimensions);
     }
 
     /**
      * Checks the requirements if a node can be synchronised and executes the sync.
      *
-     * @param  NodeInterface  $node
-     * @param  string  $workspaceName
-     * @param  bool  $translate
+     * @param NodeInterface $node
+     * @param string $workspaceName
+     * @param bool $translate
      * @return void
      */
     public function syncNode(NodeInterface $node, string $workspaceName = 'live', bool $translate = true): void
